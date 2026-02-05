@@ -306,7 +306,7 @@ if ($vms.Count -eq 0) {
             # Host I/O Cache
 	    if ($useHostIoCache -ne 'on') {
 		Write-Host "     [?] Host I/O Cache OFF -> Enable for better performance (risk on host crash)" -ForegroundColor Yellow
-	    else {
+	    } else {
 		Write-Host "     [OK] Host I/O Cache: ON" -ForegroundColor Green
 	    }
             
