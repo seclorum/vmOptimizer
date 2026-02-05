@@ -289,11 +289,12 @@ if ($vms.Count -eq 0) {
             # Chipset
             $chipsetLower = $chipset.ToLower()
             if ($chipsetLower -notin 'ich9','piix3') {
-                Write-Host "     [?] Chipset ($chipset) -> Consider ich9 for modern guests" -ForegroundColor Yellow
+                Write-Host "     [?] Chipset ($chipset) not ich9 or piix3 -> Consider ich9 for modern guests" -ForegroundColor Yellow
+            } elseif ($chipsetLower -eq 'piix3') {
+                Write-Host "     [OK] Chipset: piix3 (default, reliable; consider ich9 for modern OSes / more devices)" -ForegroundColor Green
             } else {
                 Write-Host "     [OK] Chipset: $chipset" -ForegroundColor Green
-            }
-            
+            }            
             # I/O APIC
             if ($ioapic -ne 'on' -and $cpusInt -gt 1) {
                 Write-Host "     [X] I/O APIC OFF (multi-core guest)" -ForegroundColor Red
