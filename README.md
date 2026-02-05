@@ -13,12 +13,13 @@ A Windows PowerShell script that inspects local Windows VM-related configuration
 ## Example Report
 
 ```text
+ .\vmInspectorOptimizer.ps1
 VirtualBox VM Optimization Checklist - Host & VM Checks (Windows 11+)
 ==============================================================================
 
 VirtualBox Installation Check:
-   [X] VirtualBox version 7.2.4 is outdated -> Update to 7.2.6 or later for stability and features
-   [X] Extension Pack missing or mismatched (current: None) -> Install matching Extension Pack for USB 3.0, etc.
+   [X] VirtualBox version 7.2.4 is outdated -> Update to 7.2.6 or later
+   [X] Extension Pack missing or mismatched (None) -> Install matching version
 
 Host Resources Detected:
   - Physical CPU Cores: 10
@@ -26,81 +27,75 @@ Host Resources Detected:
   - Total RAM: 32 GB
 
 1. Checking Hyper-V and VBS status...
-   [?] A hypervisor or VBS is present (Hyper-V or another) -> VirtualBox may run slowly
-       Check: bcdedit /enum | findstr hypervisorlaunchtype
-   [X] Memory Integrity (Core Isolation) is ENABLED -> Often conflicts with VirtualBox
-       Recommendation: Disable in Windows Security -> Device security -> Core isolation
+   [?] Hypervisor or VBS present -> Likely causing slow NEM mode
+   [X] Memory Integrity (Core Isolation) ENABLED
+       Disable via Windows Security -> Device security -> Core isolation
 
 2. Checking active Power Plan...
-   [OK] Active plan looks good: Power Scheme GUID: 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c  (High performance)
+   [OK] Power Scheme GUID: 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c  (High performance)
 
-3. Checking Hardware Virtualization (VT-x/AMD-V) status...
-   [X] Virtualization DISABLED in firmware
-       You must enable VT-x / AMD-V / SVM in BIOS/UEFI setup
-       (Restart PC -> enter BIOS -> look for Virtualization / CPU features)
+3. Checking Hardware Virtualization status...
+   [X] Virtualization DISABLED in BIOS/UEFI
+       Enable VT-x/AMD-V/SVM in BIOS setup
 
-4. Scanning VirtualBox VMs for optimization...
+4. Scanning VirtualBox VMs...
    Checking VM: rhel-10-lab-01 (c569df50-1879-4f12-b6b1-dc8b8bd36979)
-     [OK] CPU cores: 4 (Suggestion: 2-4 for most desktop guests)
-     [OK] RAM: 8 GB (Suggestion: 4-8 GB for most guests)
-     [X] Video memory (16 MB) < 128 MB -> Increase for better graphics
-     [X] 3D Acceleration is OFF -> Enable for better GUI performance
-     [X] Graphics controller ("vmsvga") != VBoxSVGA -> Change to VBoxSVGA for best compatibility
-     [X] VT-x/AMD-V or Nested Paging is OFF -> Enable in Acceleration tab
-     [?] Paravirtualization Interface ("default") != KVM or Hyper-V -> Consider KVM for better performance
-     [?] Chipset ("ich9") not ICH9 or PIIX3 -> Consider ICH9 for modern guests
-     [X] I/O APIC is OFF for multi-core guest -> Enable for better SMP performance
-     [OK] Host I/O Cache: OFF
-     [X] Storage controller ("PIIX4") not AHCI or VirtIO -> Switch to VirtIO for best I/O (install drivers in guest)
-     [?] Network adapter ("nat") not NAT or Bridged -> NAT is fastest for simple internet access
-     [?] Audio enabled ("default") but may not be needed -> Disable if unused for minor perf gain
-     [i] Nested Virtualization: OFF (enable if needed for nested VMs)
-     [X] USB enabled but Extension Pack missing -> Install Ext Pack for USB 2.0/3.0 support
-     [OK] Guest Additions: Installed and matching ()
-     [i] No log found - Start VM and check logs for 'NEM' or 'snail mode' mentions
+     [OK] CPU cores: 4
+     [OK] RAM: 8 GB
+     [X] Video memory (16 MB) < 128 MB
+     [X] 3D Acceleration OFF
+     [X] Graphics controller (vmsvga) != vboxsvga
+     [OK] VT-x/AMD-V + Nested Paging ON
+     [X] Paravirtualization (default) fallback -> Set to kvm
+     [OK] Chipset: ich9
+     [OK] I/O APIC: on
+     [OK] Host I/O Cache:
+     [X] Storage controller (PIIX4) -> Prefer VirtioSCSI
+     [OK] Network: nat
+     [?] Audio enabled (default) -> Disable if unused
+     [i] Nested Virtualization OFF
+     [X] USB enabled but no Ext Pack
+     [X] Guest Additions missing or not running
+     [i] Log not found - start VM to generate
 
    Checking VM: rhel-9.4-lab-01 (a8146a18-9603-4786-b96b-5df1d111e26e)
-     [?] VM is running -> Some settings can't be changed now; shut down for full fixes
-     [OK] CPU cores: 6 (Suggestion: 2-4 for most desktop guests)
-     [OK] RAM: 16 GB (Suggestion: 4-8 GB for most guests)
+     [?] VM is running -> Shut down to change some settings
+     [OK] CPU cores: 6
+     [OK] RAM: 16 GB
      [OK] Video memory: 128 MB
-     [X] 3D Acceleration is OFF -> Enable for better GUI performance
-     [X] Graphics controller ("vmsvga") != VBoxSVGA -> Change to VBoxSVGA for best compatibility
-     [X] VT-x/AMD-V or Nested Paging is OFF -> Enable in Acceleration tab
-     [?] Paravirtualization Interface ("kvm") != KVM or Hyper-V -> Consider KVM for better performance
-     [?] Chipset ("piix3") not ICH9 or PIIX3 -> Consider ICH9 for modern guests
-     [X] I/O APIC is OFF for multi-core guest -> Enable for better SMP performance
-     [OK] Host I/O Cache: OFF
-     [X] Storage controller ("PIIX4") not AHCI or VirtIO -> Switch to VirtIO for best I/O (install drivers in guest)
-     [?] Network adapter ("natnetwork") not NAT or Bridged -> NAT is fastest for simple internet access
-     [?] Audio enabled ("default") but may not be needed -> Disable if unused for minor perf gain
-     [i] Nested Virtualization: OFF (enable if needed for nested VMs)
-     [X] USB enabled but Extension Pack missing -> Install Ext Pack for USB 2.0/3.0 support
-     [OK] Guest Additions: Installed and matching ()
-     [i] No log found - Start VM and check logs for 'NEM' or 'snail mode' mentions
+     [OK] 3D Acceleration ON
+     [X] Graphics controller (vmsvga) != vboxsvga
+     [OK] VT-x/AMD-V + Nested Paging ON
+     [OK] Paravirtualization: kvm
+     [OK] Chipset: piix3
+     [OK] I/O APIC: on
+     [OK] Host I/O Cache:
+     [X] Storage controller (PIIX4) -> Prefer VirtioSCSI
+     [?] Network (natnetwork) -> NAT fastest for basic use
+     [?] Audio enabled (default) -> Disable if unused
+     [i] Nested Virtualization OFF
+     [X] USB enabled but no Ext Pack
+     [X] Guest Additions missing or not running
+     [i] Log not found - start VM to generate
 
-   Total Allocated Across All VMs:
-     [OK] Total CPU cores: 10
+   Total Allocated:
+     [OK] Total CPU: 10
      [OK] Total RAM: 24 GB
 
 5. Guest Additions check (Global)
-   [i] Cannot fully detect from host without VM running. For each VM:
-       - Check if VBoxTray.exe is running (Task Manager in guest)
-       - Or: Look for 'Oracle VM VirtualBox Graphics Adapter' in Device Manager (guest)
-       - Best: Run VirtualBox -> VM -> Devices -> Insert Guest Additions CD
-         (then install inside guest if not already present)
+   [i] Verify inside guest: VBoxTray.exe running, Oracle graphics in Device Manager
+   [i] Insert Guest Additions CD via VirtualBox menu if needed
 
 ==============================================================================
-Summary & Recommended Next Steps (Found 13 [X] issues):
+Summary & Next Steps (Found 11 [X] issues):
 
--> Disable Memory Integrity in Windows Security
--> Enable Virtualization in BIOS/UEFI
--> Update VirtualBox to 7.2.6+
--> Install matching Extension Pack
--> For each VM: Address [X] items in VirtualBox GUI -> Settings
--> After fixes -> reboot host, then test VM performance
-  - System -> Acceleration: Enable VT-x/AMD-V + Nested Paging
-  - Display: Enable 3D Acceleration, set Video Memory >=128 MB, Controller = VBoxSVGA
-  - Install Guest Additions inside every VM
-  - Don't over-allocate CPU/RAM (use <=70% cores, <=50% RAM per VM; monitor totals)
+-> Disable Memory Integrity
+-> Enable BIOS Virtualization
+-> Update VirtualBox
+-> Install Extension Pack
+-> Address [X] items in VM Settings
+-> Reboot host after host fixes
+-> Test VM performance post-changes
+
+Script finished.
   ```
