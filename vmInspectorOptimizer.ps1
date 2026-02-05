@@ -53,11 +53,15 @@ function Get-HostResources {
 
 # Function to parse msinfo32 for VBS status
 function Get-VBSStatus {
-    $tempFile = [System.IO.Path]::GetTempFileName()
-    msinfo32 /report $tempFile > $null
-    $content = Get-Content $tempFile -Raw
-    Remove-Item $tempFile -Force
-    return ($content -match "Virtualization-based security\s+Running")
+    # Check if Virtualization Based Security is active via registry
+    $vbsKey = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard" -Name "EnableVirtualizationBasedSecurity" -ErrorAction SilentlyContinue
+    $vbsRunning = $vbsKey -and $vbsKey.EnableVirtualizationBasedSecurity -eq 1
+
+    # Optional: also check Credential Guard (often tied to VBS)
+    $cgKey = Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Lsa" -Name "LsaCfgFlags" -ErrorAction SilentlyContinue
+    $cgActive = $cgKey -and $cgKey.LsaCfgFlags -gt 0
+
+    return $vbsRunning -or $cgActive
 }
 
 # Safe setting value extractor
