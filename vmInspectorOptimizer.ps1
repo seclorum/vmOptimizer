@@ -87,7 +87,7 @@ if (!(Get-Command $vboxManagePath -ErrorAction SilentlyContinue)) {
 $vbVersionRaw = & $vboxManagePath --version
 $vbVersion = $vbVersionRaw -replace 'r.*', ''
 $extPacks = & $vboxManagePath list extpacks
-$hasExtPack = $extPacks -match "Oracle VM VirtualBox Extension Pack"
+$hasExtPack = $extPacks -match "Oracle VirtualBox Extension Pack"
 $extPackVersion = if ($hasExtPack) { ($extPacks | Where-Object { $_ -match "Version:" } | Select-Object -First 1) -replace "Version:\s+", "" } else { "None" }
 
 Write-Host "VirtualBox VM Optimization Checklist - Host & VM Checks (Windows 11+)" -ForegroundColor Cyan
