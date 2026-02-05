@@ -28,15 +28,15 @@
 # - Updated log path extraction to use helper function
 #
 # Version: 2.3 (February 2026)
-# - Fixed numeric parsing: Use [int]::TryParse to safely convert strings to integers
+# - Fixed numeric parsing with [int]::TryParse to prevent cast exceptions
 # - Improved Get-SettingValue to reliably strip key= prefix and quotes
-# - Fixed chipset logic with -notin operator
-# - Cleaned displayed values in messages (no key prefixes or trailing quotes)
-# - Prevented cast exceptions and incorrect totals
+# - Fixed chipset logic using -notin
+# - Cleaned displayed values (no key prefixes or trailing quotes)
+# - Prevented invalid totals and comparison errors
 
 param(
-    [string]$OutputFile = "",
-    [switch]$FixSuggestions
+    [string]$OutputFile = "",  # Export report to this file (e.g., "report.txt")
+    [switch]$FixSuggestions    # If set, print suggested VBoxManage fix commands (non-auto)
 )
 
 # Function to get host resources
@@ -45,9 +45,9 @@ function Get-HostResources {
     $logicalProcessors = (Get-WmiObject Win32_Processor | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum
     $totalRAMGB = [math]::Round(((Get-WmiObject Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum).Sum / 1GB), 0)
     return @{
-        Cores = $cpuCores
-        LogicalProcessors = $logicalProcessors
-        RAMGB = $totalRAMGB
+        Cores              = $cpuCores
+        LogicalProcessors  = $logicalProcessors
+        RAMGB              = $totalRAMGB
     }
 }
 
@@ -56,11 +56,11 @@ function Get-VBSStatus {
     $tempFile = [System.IO.Path]::GetTempFileName()
     msinfo32 /report $tempFile > $null
     $content = Get-Content $tempFile -Raw
-    Remove-Item $tempFile
+    Remove-Item $tempFile -Force
     return ($content -match "Virtualization-based security\s+Running")
 }
 
-# Safe value extractor
+# Safe setting value extractor
 function Get-SettingValue($vmInfo, $pattern) {
     $match = $vmInfo | Where-Object { $_ -match $pattern } | Select-Object -First 1
     if ($match) {
@@ -205,10 +205,15 @@ if ($vms.Count -eq 0) {
             # Safe numeric conversion
             $cpusInt = 0
             [int]::TryParse($cpus, [ref]$cpusInt) | Out-Null
+            
             $memoryInt = 0
             [int]::TryParse($memory, [ref]$memoryInt) | Out-Null
+            
             $vramInt = 0
             [int]::TryParse($vram, [ref]$vramInt) | Out-Null
+            
+            $runLevelInt = 0
+            [int]::TryParse($additionsRunLevel, [ref]$runLevelInt) | Out-Null
             
             # Resource accumulation
             $totalAllocatedCores += $cpusInt
@@ -339,7 +344,7 @@ if ($vms.Count -eq 0) {
             }
             
             # Guest Additions
-            if ([string]::IsNullOrEmpty($additionsVersion) -or [int]$additionsRunLevel -lt 2) {
+            if ([string]::IsNullOrEmpty($additionsVersion) -or $runLevelInt -lt 2) {
                 Write-Host "     [X] Guest Additions missing or not running" -ForegroundColor Red
                 $issueCount++
             } elseif ($additionsVersion -ne $vbVersion) {
