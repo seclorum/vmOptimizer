@@ -1,10 +1,10 @@
 #Requires -RunAsAdministrator
 # vmOptimizer.ps1 - Enhanced VirtualBox Optimization Script
-# Version: 2.0 (Updated February 2026)
-# Author: Based on collaborative development
+# Author: seclorum
 # Description: Inspects Windows host settings and all VirtualBox VMs for performance optimizations.
 #              Reports issues with [OK], [X], [?], [i] indicators and recommendations.
-# New Enhancements (as of v2.0):
+#
+# Version: 2.0 (Updated February 2026)
 # - Detects VirtualBox version and Extension Pack status
 # - Checks Guest Additions version per VM
 # - Expanded VM checks: chipset, I/O APIC, host I/O cache, storage controller, network adapter, audio
@@ -15,14 +15,19 @@
 # - Windows 11+ specific: Parses msinfo32 for VBS status, checks build version
 # - Additional: Nested virt check, paravirt fallback, VBoxManage path error handling, running VM warnings
 # - Extension Pack feature check (e.g., USB 3.0 if VM uses USB)
+#
+# Version: 2.1 (Updated February 2026)
+# - Fixed parsing bugs: Removed quotes from machinereadable values using .Trim('"') to prevent false flags (e.g., chipset="piix3" was treated as "\"piix3\"", causing mismatches)
+# - Standardized comparison strings to lowercase/enum values as per VirtualBox manual to avoid any potential issues (though comparisons are case-insensitive)
+# - Similar bugs fixed across all string-based settings (graphicscontroller, paravirtprovider, chipset, storagecontrollertype, nic1, audio, etc.)
 
 # Parameters for usability
 param(
     [string]$OutputFile = "",  # Export report to this file (e.g., "report.txt")
-    [switch]$FixSuggestions    # If set, print suggested VBoxManage fix commands
+    [switch]$FixSuggestions    # If set, print suggested VBoxManage fix commands (non-auto)
 )
 
-# Function to get host resources (unchanged)
+# Function to get host resources
 function Get-HostResources {
     $cpuCores = (Get-WmiObject Win32_Processor | Measure-Object -Property NumberOfCores -Sum).Sum
     $logicalProcessors = (Get-WmiObject Win32_Processor | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum
@@ -34,7 +39,7 @@ function Get-HostResources {
     }
 }
 
-# Function to parse msinfo32 for VBS status (new for Windows 11+ checks)
+# Function to parse msinfo32 for VBS status
 function Get-VBSStatus {
     $tempFile = [System.IO.Path]::GetTempFileName()
     msinfo32 /report $tempFile > $null
@@ -47,19 +52,19 @@ function Get-VBSStatus {
     }
 }
 
-# Function to get Windows build version (enhanced for 24H2+ warnings)
+# Function to get Windows build version
 $computerInfo = Get-ComputerInfo
 $windowsVersion = $computerInfo.WindowsVersion
 $isRecentBuild = ($windowsVersion -ge 22000)  # Windows 11+, assume 24H2+ for warnings
 
-# VBoxManage path handling (new error handling)
+# VBoxManage path handling
 $vboxManagePath = "VBoxManage.exe"
 if (!(Get-Command $vboxManagePath -ErrorAction SilentlyContinue)) {
     Write-Host "[X] VBoxManage not found in PATH! Add 'C:\Program Files\Oracle\VirtualBox' to PATH or install VirtualBox." -ForegroundColor Red
     exit
 }
 
-# Get VirtualBox version and Extension Pack (new enhancement #1)
+# Get VirtualBox version and Extension Pack
 $vbVersionRaw = & $vboxManagePath --version
 $vbVersion = $vbVersionRaw -replace 'r.*', ''  # e.g., "7.2.6"
 $extPacks = & $vboxManagePath list extpacks
@@ -71,7 +76,7 @@ Write-Host "VirtualBox VM Optimization Checklist - Host & VM Checks (Windows 11+
 Write-Host "==============================================================================" -ForegroundColor Cyan
 Write-Host ""
 
-# VirtualBox version report (new)
+# VirtualBox version report
 Write-Host "VirtualBox Installation Check:" -ForegroundColor Yellow
 if ([version]$vbVersion -lt [version]"7.2.6") {
     Write-Host "   [X] VirtualBox version $vbVersion is outdated -> Update to 7.2.6 or later for stability and features" -ForegroundColor Red
@@ -92,7 +97,7 @@ Write-Host "  - Logical Processors: $($hostResources.LogicalProcessors)" -Foregr
 Write-Host "  - Total RAM: $($hostResources.RAMGB) GB" -ForegroundColor White
 Write-Host ""
 
-# 1. Hyper-V checks (enhanced with VBS from msinfo32 - new #7)
+# 1. Hyper-V checks
 Write-Host "1. Checking Hyper-V and VBS status..." -ForegroundColor Yellow
 
 $hyperVFeature = Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V-All -ErrorAction SilentlyContinue
@@ -120,7 +125,7 @@ else {
     Write-Host "   [OK] Hyper-V appears disabled / no hypervisor or VBS detected" -ForegroundColor Green
 }
 
-# Related features (unchanged)
+# Related features
 $hvPlatform = Get-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -ErrorAction SilentlyContinue
 if ($hvPlatform -and $hvPlatform.State -eq "Enabled") {
     Write-Host "   [X] Virtual Machine Platform is ENABLED -> Can conflict" -ForegroundColor Red
@@ -134,7 +139,7 @@ if ($memoryIntegrity -and $memoryIntegrity.Enabled -eq 1) {
 
 Write-Host ""
 
-# 2. Power plan (unchanged)
+# 2. Power plan
 Write-Host "2. Checking active Power Plan..." -ForegroundColor Yellow
 $activeScheme = powercfg /getactivescheme
 if ($activeScheme -match "High performance|Ultimate Performance") {
@@ -148,9 +153,8 @@ if ($activeScheme -match "High performance|Ultimate Performance") {
 }
 Write-Host ""
 
-# 3. Hardware virt (unchanged, but tied to new VBS check)
+# 3. Hardware virt
 Write-Host "3. Checking Hardware Virtualization (VT-x/AMD-V) status..." -ForegroundColor Yellow
-
 if ($computerInfo.HyperVRequirementVirtualizationFirmwareEnabled -eq $true) {
     Write-Host "   [OK] Virtualization enabled in firmware (BIOS/UEFI)" -ForegroundColor Green
 } else {
@@ -164,15 +168,15 @@ if ($computerInfo.HyperVRequirementVMMonitorModeExtensions -eq $true) {
 }
 Write-Host ""
 
-# 4. Scan VMs (enhanced with new checks #2,3,4,8)
+# 4. Scan VMs (fixed parsing with .Trim('"') for all values to handle quoted strings)
 Write-Host "4. Scanning VirtualBox VMs for optimization..." -ForegroundColor Yellow
 
-# Get list of VMs and running VMs (new for running VM support)
+# Get list of VMs and running VMs
 $vms = & $vboxManagePath list vms
 $runningVms = & $vboxManagePath list runningvms
 $totalAllocatedCores = 0
 $totalAllocatedRAMGB = 0
-$issueCount = 0  # For summary (new #6)
+$issueCount = 0  # For summary
 
 if ($vms.Count -eq 0) {
     Write-Host "   [i] No VMs found on this system." -ForegroundColor White
@@ -191,27 +195,27 @@ if ($vms.Count -eq 0) {
             # Get VM info (machinereadable for parsing)
             $vmInfo = & $vboxManagePath showvminfo $vmUUID --machinereadable
             
-            # Parse settings (expanded #3)
-            $cpus = ($vmInfo | Where-Object { $_ -match '^cpus=' }) -replace 'cpus=', ''
-            $memory = ($vmInfo | Where-Object { $_ -match '^memory=' }) -replace 'memory=', ''
-            $vram = ($vmInfo | Where-Object { $_ -match '^vram=' }) -replace 'vram=', ''
-            $accelerate3D = ($vmInfo | Where-Object { $_ -match '^accelerate3d=' }) -replace 'accelerate3d=', ''
-            $graphicsController = ($vmInfo | Where-Object { $_ -match '^graphicscontroller=' }) -replace 'graphicscontroller=', ''
-            $hwvirtEx = ($vmInfo | Where-Object { $_ -match '^hwvirtex=' }) -replace 'hwvirtex=', ''
-            $nestedPaging = ($vmInfo | Where-Object { $_ -match '^nestedpaging=' }) -replace 'nestedpaging=', ''
-            $paravirtProvider = ($vmInfo | Where-Object { $_ -match '^paravirtprovider=' }) -replace 'paravirtprovider=', ''
-            $chipset = ($vmInfo | Where-Object { $_ -match '^chipset=' }) -replace 'chipset=', ''
-            $ioapic = ($vmInfo | Where-Object { $_ -match '^ioapic=' }) -replace 'ioapic=', ''
-            $useHostIoCache = ($vmInfo | Where-Object { $_ -match '^usehostiocache0=' }) -replace 'usehostiocache0=', ''  # Assume first controller
-            $storageControllerType = ($vmInfo | Where-Object { $_ -match '^storagecontrollertype0=' }) -replace 'storagecontrollertype0=', ''
-            $nicType = ($vmInfo | Where-Object { $_ -match '^nic1=' }) -replace 'nic1=', ''
-            $audioEnabled = ($vmInfo | Where-Object { $_ -match '^audio=' }) -replace 'audio=', ''
-            $nestedHwVirt = ($vmInfo | Where-Object { $_ -match '^nested-hw-virt=' }) -replace 'nested-hw-virt=', ''
-            $usbController = ($vmInfo | Where-Object { $_ -match '^usb=' }) -replace 'usb=', ''  # For ext pack check
-            $additionsVersion = ($vmInfo | Where-Object { $_ -match '^additionsversion=' }) -replace 'additionsversion=', ''
-            $additionsRunLevel = ($vmInfo | Where-Object { $_ -match '^additionsrunlevel=' }) -replace 'additionsrunlevel=', ''
+            # Parse settings (added .Trim('"') to remove quotes from string values)
+            $cpus = (($vmInfo | Where-Object { $_ -match '^cpus=' }) -replace 'cpus=', '').Trim('"')
+            $memory = (($vmInfo | Where-Object { $_ -match '^memory=' }) -replace 'memory=', '').Trim('"')
+            $vram = (($vmInfo | Where-Object { $_ -match '^vram=' }) -replace 'vram=', '').Trim('"')
+            $accelerate3D = (($vmInfo | Where-Object { $_ -match '^accelerate3d=' }) -replace 'accelerate3d=', '').Trim('"')
+            $graphicsController = (($vmInfo | Where-Object { $_ -match '^graphicscontroller=' }) -replace 'graphicscontroller=', '').Trim('"')
+            $hwvirtEx = (($vmInfo | Where-Object { $_ -match '^hwvirtex=' }) -replace 'hwvirtex=', '').Trim('"')
+            $nestedPaging = (($vmInfo | Where-Object { $_ -match '^nestedpaging=' }) -replace 'nestedpaging=', '').Trim('"')
+            $paravirtProvider = (($vmInfo | Where-Object { $_ -match '^paravirtprovider=' }) -replace 'paravirtprovider=', '').Trim('"')
+            $chipset = (($vmInfo | Where-Object { $_ -match '^chipset=' }) -replace 'chipset=', '').Trim('"')
+            $ioapic = (($vmInfo | Where-Object { $_ -match '^ioapic=' }) -replace 'ioapic=', '').Trim('"')
+            $useHostIoCache = (($vmInfo | Where-Object { $_ -match '^usehostiocache0=' }) -replace 'usehostiocache0=', '').Trim('"')  # Assume first controller
+            $storageControllerType = (($vmInfo | Where-Object { $_ -match '^storagecontrollertype0=' }) -replace 'storagecontrollertype0=', '').Trim('"')
+            $nicType = (($vmInfo | Where-Object { $_ -match '^nic1=' }) -replace 'nic1=', '').Trim('"')
+            $audioEnabled = (($vmInfo | Where-Object { $_ -match '^audio=' }) -replace 'audio=', '').Trim('"')
+            $nestedHwVirt = (($vmInfo | Where-Object { $_ -match '^nested-hw-virt=' }) -replace 'nested-hw-virt=', '').Trim('"')
+            $usbController = (($vmInfo | Where-Object { $_ -match '^usb=' }) -replace 'usb=', '').Trim('"')  # For ext pack check
+            $additionsVersion = (($vmInfo | Where-Object { $_ -match '^additionsversion=' }) -replace 'additionsversion=', '').Trim('"')
+            $additionsRunLevel = (($vmInfo | Where-Object { $_ -match '^additionsrunlevel=' }) -replace 'additionsrunlevel=', '').Trim('"')
             
-            # Resource checks (smarter #4)
+            # Resource checks
             $totalAllocatedCores += [int]$cpus
             $memoryGB = [math]::Round([int]$memory / 1024, 0)
             $totalAllocatedRAMGB += $memoryGB
@@ -231,7 +235,7 @@ if ($vms.Count -eq 0) {
                 Write-Host "     [OK] RAM: $memoryGB GB (Suggestion: 4-8 GB for most guests)" -ForegroundColor Green
             }
             
-            # Video/Graphics (unchanged)
+            # Video/Graphics (updated comparison to lowercase 'vboxsvga')
             if ([int]$vram -lt 128) {
                 Write-Host "     [X] Video memory ($vram MB) < 128 MB -> Increase for better graphics" -ForegroundColor Red
                 $issueCount++
@@ -244,14 +248,14 @@ if ($vms.Count -eq 0) {
             } else {
                 Write-Host "     [OK] 3D Acceleration: ON" -ForegroundColor Green
             }
-            if ($graphicsController -ne 'VBoxSVGA') {
-                Write-Host "     [X] Graphics controller ($graphicsController) != VBoxSVGA -> Change to VBoxSVGA for best compatibility" -ForegroundColor Red
+            if ($graphicsController -ne 'vboxsvga') {
+                Write-Host "     [X] Graphics controller ($graphicsController) != vboxsvga -> Change to vboxsvga for best compatibility" -ForegroundColor Red
                 $issueCount++
             } else {
-                Write-Host "     [OK] Graphics controller: VBoxSVGA" -ForegroundColor Green
+                Write-Host "     [OK] Graphics controller: $graphicsController" -ForegroundColor Green
             }
             
-            # Acceleration (unchanged)
+            # Acceleration
             if ($hwvirtEx -ne 'on' -or $nestedPaging -ne 'on') {
                 Write-Host "     [X] VT-x/AMD-V or Nested Paging is OFF -> Enable in Acceleration tab" -ForegroundColor Red
                 $issueCount++
@@ -259,19 +263,19 @@ if ($vms.Count -eq 0) {
                 Write-Host "     [OK] VT-x/AMD-V and Nested Paging: ON" -ForegroundColor Green
             }
             
-            # Paravirt (enhanced with fallback warning #8)
+            # Paravirt
             if ($paravirtProvider -eq 'none' -or $paravirtProvider -eq 'default') {
-                Write-Host "     [X] Paravirtualization Interface ($paravirtProvider) is fallback/none -> Set to KVM for better performance" -ForegroundColor Red
+                Write-Host "     [X] Paravirtualization Interface ($paravirtProvider) is fallback/none -> Set to kvm for better performance" -ForegroundColor Red
                 $issueCount++
             } elseif ($paravirtProvider -ne 'kvm' -and $paravirtProvider -ne 'hyperv') {
-                Write-Host "     [?] Paravirtualization Interface ($paravirtProvider) != KVM or Hyper-V -> Consider KVM for better performance" -ForegroundColor Yellow
+                Write-Host "     [?] Paravirtualization Interface ($paravirtProvider) != kvm or hyperv -> Consider kvm for better performance" -ForegroundColor Yellow
             } else {
                 Write-Host "     [OK] Paravirtualization Interface: $paravirtProvider" -ForegroundColor Green
             }
             
-            # New expanded checks #3
+            # Chipset (updated message to lowercase for consistency, quotes fixed)
             if ($chipset -ne 'ich9' -and $chipset -ne 'piix3') {
-                Write-Host "     [?] Chipset ($chipset) not ICH9 or PIIX3 -> Consider ICH9 for modern guests" -ForegroundColor Yellow
+                Write-Host "     [?] Chipset ($chipset) not ich9 or piix3 -> Consider ich9 for modern guests" -ForegroundColor Yellow
             } else {
                 Write-Host "     [OK] Chipset: $chipset" -ForegroundColor Green
             }
@@ -287,13 +291,13 @@ if ($vms.Count -eq 0) {
                 Write-Host "     [OK] Host I/O Cache: OFF" -ForegroundColor Green
             }
             if ($storageControllerType -ne 'IntelAhci' -and $storageControllerType -ne 'VirtioSCSI') {
-                Write-Host "     [X] Storage controller ($storageControllerType) not AHCI or VirtIO -> Switch to VirtIO for best I/O (install drivers in guest)" -ForegroundColor Red
+                Write-Host "     [X] Storage controller ($storageControllerType) not IntelAhci or VirtioSCSI -> Switch to VirtioSCSI for best I/O (install drivers in guest)" -ForegroundColor Red
                 $issueCount++
             } else {
                 Write-Host "     [OK] Storage controller: $storageControllerType" -ForegroundColor Green
             }
             if ($nicType -ne 'nat' -and $nicType -ne 'bridged') {
-                Write-Host "     [?] Network adapter ($nicType) not NAT or Bridged -> NAT is fastest for simple internet access" -ForegroundColor Yellow
+                Write-Host "     [?] Network adapter ($nicType) not nat or bridged -> NAT is fastest for simple internet access" -ForegroundColor Yellow
             } else {
                 Write-Host "     [OK] Network adapter: $nicType" -ForegroundColor Green
             }
@@ -303,14 +307,14 @@ if ($vms.Count -eq 0) {
                 Write-Host "     [OK] Audio: Disabled or null" -ForegroundColor Green
             }
             
-            # Nested virt (new #8)
+            # Nested virt
             if ($nestedHwVirt -eq 'on') {
                 Write-Host "     [OK] Nested Virtualization: ON (good if running VMs inside this VM)" -ForegroundColor Green
             } else {
                 Write-Host "     [i] Nested Virtualization: OFF (enable if needed for nested VMs)" -ForegroundColor White
             }
             
-            # Ext pack feature check (new #8, e.g., USB)
+            # Ext pack feature check
             if ($usbController -ne 'off' -and !$hasExtPack) {
                 Write-Host "     [X] USB enabled but Extension Pack missing -> Install Ext Pack for USB 2.0/3.0 support" -ForegroundColor Red
                 $issueCount++
@@ -318,7 +322,7 @@ if ($vms.Count -eq 0) {
                 Write-Host "     [OK] USB: Enabled with Ext Pack support" -ForegroundColor Green
             }
             
-            # Guest Additions check (new #2)
+            # Guest Additions check
             if ($additionsVersion -eq '' -or $additionsRunLevel -lt 2) {
                 Write-Host "     [X] Guest Additions missing or not running properly -> Install for better integration/performance" -ForegroundColor Red
                 $issueCount++
@@ -329,7 +333,7 @@ if ($vms.Count -eq 0) {
                 Write-Host "     [OK] Guest Additions: Installed and matching ($additionsVersion)" -ForegroundColor Green
             }
             
-            # Slow mode check (new #5 - basic log parse if log exists)
+            # Slow mode check
             $logPath = ($vmInfo | Where-Object { $_ -match '^CfgFile=' }) -replace 'CfgFile="', '' -replace '"', ''  # Approximate log path from cfg
             $logPath = $logPath -replace '.vbox$', '-0.log'  # Latest log
             if (Test-Path $logPath) {
@@ -344,12 +348,12 @@ if ($vms.Count -eq 0) {
                 Write-Host "     [i] No log found - Start VM and check logs for 'NEM' or 'snail mode' mentions" -ForegroundColor White
             }
             
-            # Fix suggestions if flag set (new #6)
+            # Fix suggestions if flag set (updated for lowercase values)
             if ($FixSuggestions) {
                 Write-Host "     Suggested Fixes (run manually):" -ForegroundColor Cyan
                 if ([int]$vram -lt 128) { Write-Host "       VBoxManage modifyvm `"$vmName`" --vram 128" -ForegroundColor Gray }
                 if ($accelerate3D -ne 'on') { Write-Host "       VBoxManage modifyvm `"$vmName`" --accelerate3d on" -ForegroundColor Gray }
-                if ($graphicsController -ne 'VBoxSVGA') { Write-Host "       VBoxManage modifyvm `"$vmName`" --graphicscontroller VBoxSVGA" -ForegroundColor Gray }
+                if ($graphicsController -ne 'vboxsvga') { Write-Host "       VBoxManage modifyvm `"$vmName`" --graphicscontroller vboxsvga" -ForegroundColor Gray }
                 if ($hwvirtEx -ne 'on') { Write-Host "       VBoxManage modifyvm `"$vmName`" --hwvirtex on" -ForegroundColor Gray }
                 if ($nestedPaging -ne 'on') { Write-Host "       VBoxManage modifyvm `"$vmName`" --nestedpaging on" -ForegroundColor Gray }
                 if ($paravirtProvider -eq 'none' -or $paravirtProvider -eq 'default') { Write-Host "       VBoxManage modifyvm `"$vmName`" --paravirtprovider kvm" -ForegroundColor Gray }
@@ -362,7 +366,7 @@ if ($vms.Count -eq 0) {
         }
     }
     
-    # Total allocation summary (new #4)
+    # Total allocation summary
     Write-Host "   Total Allocated Across All VMs:" -ForegroundColor Cyan
     if ($totalAllocatedCores -gt $hostResources.LogicalProcessors) {
         Write-Host "     [X] Total CPU cores: $totalAllocatedCores (> host $hostResources.LogicalProcessors) -> Overcommit risk" -ForegroundColor Red
@@ -377,7 +381,7 @@ if ($vms.Count -eq 0) {
     Write-Host ""
 }
 
-# 5. Global Guest Additions note (unchanged, but enhanced by per-VM check)
+# 5. Global Guest Additions note
 Write-Host "5. Guest Additions check (Global)" -ForegroundColor Yellow
 Write-Host "   [i] Cannot fully detect from host without VM running. For each VM:" -ForegroundColor White
 Write-Host "       - Check if VBoxTray.exe is running (Task Manager in guest)" -ForegroundColor White
@@ -386,12 +390,12 @@ Write-Host "       - Best: Run VirtualBox -> VM -> Devices -> Insert Guest Addit
 Write-Host "         (then install inside guest if not already present)" -ForegroundColor White
 Write-Host ""
 
-# 6. Summary (enhanced #6: prioritized, count)
+# 6. Summary
 Write-Host "==============================================================================" -ForegroundColor Cyan
 Write-Host "Summary & Recommended Next Steps (Found $issueCount [X] issues):" -ForegroundColor Cyan
 Write-Host ""
 
-# Prioritized top issues (new: e.g., host first)
+# Prioritized top issues
 if ($hyperVFeature -and $hyperVFeature.State -eq "Enabled") {
     Write-Host "-> Priority #1: Disable Hyper-V (use bcdedit method + reboot)" -ForegroundColor Red
 }
@@ -414,14 +418,14 @@ if ($extPackVersion -ne $vbVersion) {
 Write-Host "-> For each VM: Address [X] items in VirtualBox GUI -> Settings" -ForegroundColor White
 Write-Host "-> After fixes -> reboot host, then test VM performance" -ForegroundColor White
 Write-Host "  - System -> Acceleration: Enable VT-x/AMD-V + Nested Paging" -ForegroundColor White
-Write-Host "  - Display: Enable 3D Acceleration, set Video Memory >=128 MB, Controller = VBoxSVGA" -ForegroundColor White
+Write-Host "  - Display: Enable 3D Acceleration, set Video Memory >=128 MB, Controller = vboxsvga" -ForegroundColor White
 Write-Host "  - Install Guest Additions inside every VM" -ForegroundColor White
 Write-Host "  - Don't over-allocate CPU/RAM (use <=70% cores, <=50% RAM per VM; monitor totals)" -ForegroundColor White
 
 Write-Host ""
 Write-Host "Script finished." -ForegroundColor Cyan
 
-# Export to file if specified (new #6)
+# Export to file if specified
 if ($OutputFile) {
     $transcript = (Get-History -Count 1).CommandLine  # Approximate, or use Start-Transcript earlier
     # Actually, for full output, recommend running with Start-Transcript
