@@ -261,7 +261,7 @@ if ($vms.Count -eq 0) {
             
             # Graphics controller
             if ($graphicsController.ToLower() -ne 'vboxsvga') {
-                Write-Host "     [X] Graphics controller ($graphicsController) != vboxsvga" -ForegroundColor Red
+		Write-Host "     [X] Graphics controller ($graphicsController) != vboxsvga -> Change to vboxsvga for Windows or vmsvga for Linux" -ForegroundColor Red
                 $issueCount++
             } else {
                 Write-Host "     [OK] Graphics controller: $graphicsController" -ForegroundColor Green
@@ -304,11 +304,11 @@ if ($vms.Count -eq 0) {
             }
             
             # Host I/O Cache
-            if ($useHostIoCache -eq 'on') {
-                Write-Host "     [?] Host I/O Cache ON -> Disable on SSD" -ForegroundColor Yellow
-            } else {
-                Write-Host "     [OK] Host I/O Cache: $useHostIoCache" -ForegroundColor Green
-            }
+	    if ($useHostIoCache -ne 'on') {
+		Write-Host "     [?] Host I/O Cache OFF -> Enable for better performance (risk on host crash)" -ForegroundColor Yellow
+	    else {
+		Write-Host "     [OK] Host I/O Cache: ON" -ForegroundColor Green
+	    }
             
             # Storage controller
             if ($storageControllerType -notin 'IntelAhci','VirtioSCSI') {
