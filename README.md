@@ -1,6 +1,6 @@
 # vmOptimizer
 
-A Windows PowerShell script that inspects local Windows VM-related configuration options as well as VirtualBox VM instances, and provides a detailed report of recommended changes to improve VirtualBox VM performance on Windows hosts.
+A Windows PowerShell script that inspects a local Windows hosts VM-related configuration options as well as VirtualBox VM instances, and provides a detailed report of recommended changes to improve VirtualBox VM performance on the Windows hosts.
 
 ## Features
 
